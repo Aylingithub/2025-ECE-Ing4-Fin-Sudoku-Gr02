@@ -113,22 +113,30 @@ namespace Sudoku.Benchmark
 		}
 
 		public static Job GetBaseJob()
-        {
-            var baseJob = Job.Dry
+		{
+			var baseJob = Job.Dry
                     .WithId("Solving Sudokus")
                     .WithPlatform(Platform.X64)
-                    .WithJit(Jit.RyuJit)
-                    .WithRuntime(CoreRuntime.Core80)
-                    .WithLaunchCount(1) // Réduit le nombre de lancements
-                    .WithWarmupCount(0) // Supprime le warmup
-                    .WithIterationCount(1) // Réduit le nombre d'itérations
-                    .WithInvocationCount(1) // Exécute chaque benchmark une seule fois
-                    .WithUnrollFactor(1)
-                    .WithToolchain(InProcessEmitToolchain.Instance);
-            return baseJob;
-        }
+					//.WithJit(Jit.Default)
+					.WithJit(Jit.RyuJit)
+					.WithRuntime(CoreRuntime.Core80)
+                    .WithLaunchCount(1)
+                    .WithWarmupCount(1)
+                    .WithIterationCount(3)
+                    .WithInvocationCount(3)
+                    
+				.WithUnrollFactor(1);
+			//         if (Program.IsDebug)
+			//         {
+			//             baseJob = baseJob.WithCustomBuildConfiguration("Debug");
+			//             baseJob = baseJob.WithToolchain(InProcessEmitToolchain.Instance);
+			//}
 
-
+			//baseJob = baseJob.WithCustomBuildConfiguration("Debug");
+			//baseJob = baseJob.WithToolchain(InProcessEmitToolchain.Instance);
+			baseJob = baseJob.WithToolchain(InProcessNoEmitToolchain.Instance);
+			return baseJob;
+		}
     }
 
 
@@ -215,10 +223,7 @@ namespace Sudoku.Benchmark
 
         public IEnumerable<SolverPresenter> GetSolvers()
         {
-            return _Solvers.Where(s => 
-                s.Solver.GetType().Name.Contains("ORToolsSimpleSolvers") ||
-                s.Solver.GetType().Name.Contains("BacktrackingDotNetSolver")
-            );
+            return _Solvers;
 
         }
 
@@ -230,25 +235,26 @@ namespace Sudoku.Benchmark
             {
                 try
                 {
-                    Console.WriteLine($"▶️ Starting benchmark for solver: {SolverPresenter}");
+                    Console.WriteLine($"//Solver {SolverPresenter} solving sudoku: \n {puzzle}");
                     var startTime = Clock.Elapsed;
                     var solution = SolverPresenter.SolveWithTimeLimit(puzzle, MaxSolverDuration);
                     if (!solution.IsValid(puzzle))
                     {
                         throw new ApplicationException($"sudoku has {solution.NbErrors(puzzle)} errors");
                     }
+
                     var duration = Clock.Elapsed - startTime;
-                    Console.WriteLine($"✅ Finished benchmark for solver: {SolverPresenter} in {duration.TotalMilliseconds} ms");
+                    var durationSeconds = (int)duration.TotalSeconds;
+                    var durationMilliSeconds = duration.TotalMilliseconds - (1000 * durationSeconds);
+                    Console.WriteLine($"//Valid Solution found: \n {solution} \n Solver {SolverPresenter} found the solution  in {durationSeconds} s {durationMilliSeconds} ms");
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"❌ Error in solver {SolverPresenter}: {e.Message}");
+                    Console.WriteLine(e);
                     throw;
                 }
             }
         }
-
-
 
     }
 }

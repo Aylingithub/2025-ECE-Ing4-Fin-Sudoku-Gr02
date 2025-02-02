@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 namespace sudoku.Z3Solver
 {
-    public class Z3Solver : ISudokuSolver
+    public class Z3BitVectorSimpleSolver : ISudokuSolver
     {
         public SudokuGrid Solve(SudokuGrid s)
         {

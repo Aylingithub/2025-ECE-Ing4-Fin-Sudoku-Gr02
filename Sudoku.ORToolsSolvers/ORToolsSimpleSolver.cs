@@ -1,105 +1,88 @@
-﻿using Sudoku.Shared;
-using Google.OrTools.Sat;
+﻿using Google.OrTools.Sat;
+using Sudoku.Shared;
 
-namespace Sudoku.ORToolsSolvers
+namespace Sudoku.ORToolsSolvers;
+
+public class ORToolsSimpleSolver : ISudokuSolver
 {
-    public class ORToolsSimpleSolvers : ISudokuSolver
+    public SudokuGrid Solve(SudokuGrid s)
     {
-        public SudokuGrid Solve(SudokuGrid s)
+        // Création du modèle de contraintes
+        CpModel model = new CpModel();
+
+        // Définir les variables pour chaque cellule (9x9)
+        // Les variables peuvent prendre des valeurs entre 1 et 9 (valeurs possibles pour chaque cellule)
+        IntVar[,] cells = new IntVar[9, 9];
+        for (int i = 0; i < 9; i++)
         {
-            // Création du modèle OR-Tools
-            CpModel model = new CpModel();
-
-            // Définir les variables : chaque cellule est une variable avec des valeurs entre 1 et 9
-            IntVar[,] cells = new IntVar[9, 9];
-            for (int row = 0; row < 9; row++)
+            for (int j = 0; j < 9; j++)
             {
-                for (int col = 0; col < 9; col++)
-                {
-                    cells[row, col] = model.NewIntVar(1, 9, $"cell_{row}_{col}");
-                }
-            }
-
-            // Contraintes pour les lignes : chaque chiffre de 1 à 9 doit apparaître une fois
-            for (int row = 0; row < 9; row++)
-            {
-                model.AddAllDifferent(GetRow(cells, row));
-            }
-
-            // Contraintes pour les colonnes : chaque chiffre de 1 à 9 doit apparaître une fois
-            for (int col = 0; col < 9; col++)
-            {
-                model.AddAllDifferent(GetColumn(cells, col));
-            }
-
-            // Contraintes pour chaque boîte 3x3 : chaque chiffre de 1 à 9 doit apparaître une fois
-            for (int boxRow = 0; boxRow < 3; boxRow++)
-            {
-                for (int boxCol = 0; boxCol < 3; boxCol++)
-                {
-                    List<IntVar> box = new List<IntVar>();
-                    for (int row = 0; row < 3; row++)
-                    {
-                        for (int col = 0; col < 3; col++)
-                        {
-                            box.Add(cells[3 * boxRow + row, 3 * boxCol + col]);
-                        }
-                    }
-                    model.AddAllDifferent(box);
-                }
-            }
-
-            // Contraintes pour les cellules données initialement
-            for (int row = 0; row < 9; row++)
-            {
-                for (int col = 0; col < 9; col++)
-                {
-                    if (s.Cells[row, col] != 0)
-                    {
-                        model.Add(cells[row, col] == s.Cells[row, col]);
-                    }
-                }
-            }
-
-            // Résolution
-            CpSolver solver = new CpSolver();
-            CpSolverStatus status = solver.Solve(model);
-
-            // Vérification du statut de la solution
-            if (status == CpSolverStatus.Feasible || status == CpSolverStatus.Optimal)
-            {
-                SudokuGrid solutionGrid = s.CloneSudoku();
-
-                for (int row = 0; row < 9; row++)
-                {
-                    for (int col = 0; col < 9; col++)
-                    {
-                        solutionGrid.Cells[row, col] = (int)solver.Value(cells[row, col]);
-                    }
-                }
-
-                return solutionGrid;
-            }
-            else
-            {
-                throw new Exception("Aucune solution trouvée pour cette grille de Sudoku.");
+                cells[i, j] = model.NewIntVar(1, 9, $"cell_{i}_{j}");
             }
         }
 
-        private IEnumerable<IntVar> GetRow(IntVar[,] grid, int row)
+        // Ajouter des contraintes pour les lignes, colonnes et régions 3x3
+        for (int i = 0; i < 9; i++)
         {
-            for (int col = 0; col < 9; col++)
+            // Contrainte pour chaque ligne : chaque cellule doit être unique
+            model.AddAllDifferent(Enumerable.Range(0, 9).Select(j => cells[i, j]).ToArray());
+            // Contrainte pour chaque colonne : chaque cellule doit être unique
+            model.AddAllDifferent(Enumerable.Range(0, 9).Select(j => cells[j, i]).ToArray());
+        }
+
+        // Ajouter des contraintes pour les régions 3x3
+        for (int box = 0; box < 9; box++)
+        {
+            int rowStart = (box / 3) * 3;
+            int colStart = (box % 3) * 3;
+            List<IntVar> boxCells = new List<IntVar>();
+
+            for (int r = rowStart; r < rowStart + 3; r++)
             {
-                yield return grid[row, col];
+                for (int c = colStart; c < colStart + 3; c++)
+                {
+                    boxCells.Add(cells[r, c]);
+                }
+            }
+            model.AddAllDifferent(boxCells.ToArray());
+        }
+
+        // Ajouter des contraintes pour les cases déjà remplies dans le Sudoku
+        for (int i = 0; i < 9; i++)
+        {
+            for (int j = 0; j < 9; j++)
+            {
+                if (s.Cells[i, j] != 0)
+                {
+                    var iclosure = i;
+                    var jclosure = j;
+                    // Si la cellule est déjà remplie, fixer sa valeur
+                    model.Add( cells[iclosure, jclosure] == s.Cells[iclosure, jclosure]);
+                }
             }
         }
 
-        private IEnumerable<IntVar> GetColumn(IntVar[,] grid, int col)
+        // Utiliser le solveur pour résoudre le problème
+        CpSolver solver = new CpSolver();
+        CpSolverStatus status = solver.Solve(model);
+
+        // Si une solution est trouvée, mettre à jour la grille Sudoku
+        if (status == CpSolverStatus.Optimal || status == CpSolverStatus.Feasible)
         {
-            for (int row = 0; row < 9; row++)
+            for (int i = 0; i < 9; i++)
             {
-                yield return grid[row, col];
+                for (int j = 0; j < 9; j++)
+                {
+                    s.Cells[i, j] = (int)solver.Value(cells[i, j]);
+                }
             }
         }
+        else
+        {
+            // Si aucune solution n'a été trouvée, retourner une grille vide ou générer une exception
+            throw new InvalidOperationException("No solution found for the Sudoku puzzle.");
+        }
+
+        return s;
     }
 }
